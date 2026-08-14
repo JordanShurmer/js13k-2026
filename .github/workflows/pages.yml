@@ -1,0 +1,79 @@
+name: Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Odin
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: latest
+
+      - name: Build WASM
+        run: |
+          odin version
+          odin build src -target:js_wasm32 -out:game.wasm -o:size -no-entry-point
+          ls -la game.wasm
+
+      - name: Locate and copy odin.js
+        run: |
+          # Release layout: odin binary sits next to core/
+          ODIN_BIN=$(which odin)
+          ODIN_ROOT=$(dirname "$ODIN_BIN")
+          if [ -f "$ODIN_ROOT/core/sys/wasm/js/odin.js" ]; then
+            cp "$ODIN_ROOT/core/sys/wasm/js/odin.js" .
+          elif [ -f "$ODIN_ROOT/../core/sys/wasm/js/odin.js" ]; then
+            cp "$ODIN_ROOT/../core/sys/wasm/js/odin.js" .
+          else
+            # last resort: search under common install paths
+            FOUND=$(find "$ODIN_ROOT" "$HOME" /opt /usr/local -path '*/core/sys/wasm/js/odin.js' 2>/dev/null | head -1 || true)
+            if [ -n "$FOUND" ]; then
+              cp "$FOUND" .
+            else
+              echo "FAIL: could not find odin.js"
+              exit 1
+            fi
+          fi
+          ls -la odin.js
+
+      - name: Stage site
+        run: |
+          mkdir -p site
+          cp index.html game.js game.wasm odin.js site/
+          # optional size note (non-fatal for the live demo)
+          (cd site && zip -9 -j /tmp/game.zip index.html game.js game.wasm odin.js)
+          SIZE=$(stat -c%s /tmp/game.zip)
+          echo "demo zip size: $SIZE bytes (limit 13312 for submission)"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
