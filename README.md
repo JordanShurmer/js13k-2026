@@ -13,7 +13,15 @@ Adventure is the main point of the game. Some bosses, some collectibles, some NP
 Atmospheric pixel-art. Mobile-first. Procedural assets only.
 
 See [PLAN.md](PLAN.md) for the foundation plan and Grug rules.
-See [AGENT.md](AGENT.md) for the high-level goal.
+See [AGENT.md](AGENT.md) for the high-level goal + implementation notes.
+
+## Current vertical slice
+
+- Flat diggable tile world (u8 array)
+- Player movement + tile collision
+- Permanent dig tool (action / X / second button)
+- Camera follow
+- No wands / enemies / bosses yet (disabled by absence)
 
 ## Build (requires recent Odin)
 
@@ -24,7 +32,7 @@ odin build src -target:js_wasm32 -out:game.wasm -o:size -no-entry-point
 # serve the directory (python -m http.server)
 ```
 
-Size check (after you have a zip):
+Size check:
 
 ```bash
 make size
@@ -32,5 +40,5 @@ make size
 
 ## Controls
 
-- Touch: stick appears under thumb. Two buttons fixed top-left.
-- Keyboard: arrows/WASD + Z (jump) X (action)
+- Touch: stick appears under thumb. Two buttons fixed top-left (Jump + Dig).
+- Keyboard: arrows/WASD + Z/Space (jump) X (dig)
