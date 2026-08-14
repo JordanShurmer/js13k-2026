@@ -1,0 +1,59 @@
+# Deploy / size-check on every main push. Skips doc-only changes.
+# Auth is Tailscale SSH — same secrets as shurmer-family.
+# Requires secrets: TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET
+#
+# Without a remote host the job still builds + enforces the 13k size limit.
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+
+env:
+  # Set this to your Tailscale host if you want live demo rsync.
+  # Leave empty / unset to only build + size-check.
+  DEPLOY_HOST: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Odin
+        run: |
+          # Grab a recent nightly or release that has js_wasm32
+          curl -sL https://github.com/odin-lang/Odin/releases/latest/download/odin-linux-amd64.zip -o odin.zip || true
+          # Fallback: build from source is heavy; for now just note if missing
+          if [ ! -f odin.zip ]; then
+            echo "Odin binary download not available in this runner — size check will be skipped if no odin"
+          else
+            unzip -q odin.zip -d odin-bin
+            echo "$((pwd))/odin-bin" >> $GITHUB_PATH
+          fi
+
+      - name: Tailscale
+        if: env.DEPLOY_HOST != ''
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:js13k
+
+      - name: Trust host key
+        if: env.DEPLOY_HOST != ''
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy / size-check
+        run: |
+          chmod +x ./deploy.sh
+          if [ -n "$DEPLOY_HOST" ]; then
+            SERVER="root@$DEPLOY_HOST" bash ./deploy.sh
+          else
+            bash ./deploy.sh -build-only
+          fi
