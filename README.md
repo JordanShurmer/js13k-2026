@@ -1,9 +1,19 @@
 # js13k-2026-orb-ruins
 
-Atmospheric pixel-art 2D platformer for js13k 2026.
-Odin → WASM. Mobile-first. Procedural assets only.
+## Goal
 
-See [PLAN.md](PLAN.md) for the full foundation plan and Grug rules.
+Adventure exploration Noita-like that ships as a deliverable less than 13 KB.
+
+Odin compiling to WASM.
+
+Player has 2 editable wands and a permanent digging tool that can be upgraded.
+
+Adventure is the main point of the game. Some bosses, some collectibles, some NPCs, lots of enemies. Very difficult roguelike Noita-like.
+
+Atmospheric pixel-art. Mobile-first. Procedural assets only.
+
+See [PLAN.md](PLAN.md) for the foundation plan and Grug rules.
+See [AGENT.md](AGENT.md) for the high-level goal.
 
 ## Build (requires recent Odin)
 
