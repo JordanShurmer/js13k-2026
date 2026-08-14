@@ -50,6 +50,8 @@ init :: proc "c" () {
     player_pos = {40, 120}
     player_vel = {}
     cam = {}
+    gen_basic_ruins()
+    setup_camera_triggers()
 }
 
 @(export)
@@ -73,7 +75,7 @@ update :: proc "c" () {
     context = runtime.default_context()
     update_player()
     update_orb()
-    update_camera()
+    update_camera_full(player_pos, dt)
 }
 
 update_player :: proc() {
@@ -127,12 +129,6 @@ update_player :: proc() {
 
 update_orb :: proc() {
     orb_pulse = 0.5 + 0.5 * math.sin(time * 3.0)
-}
-
-update_camera :: proc() {
-    // simple follow for now
-    target := player_pos - Vec2{cw*0.5, ch*0.5}
-    cam = approach_v(cam, target, 4.0 * dt)
 }
 
 // ---
