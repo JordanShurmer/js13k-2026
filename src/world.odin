@@ -1,6 +1,6 @@
 package main
 
-import "core:runtime"
+import "base:runtime"
 
 // Data-oriented world: one flat array of tiles.
 // Everything optional later can be #if'd out; this core stays.

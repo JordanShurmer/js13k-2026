@@ -1,7 +1,7 @@
 package main
 
 import "core:math"
-import "core:runtime"
+import "base:runtime"
 
 // --- tiny types ---
 Vec2 :: [2]f32
@@ -31,18 +31,18 @@ time: f32
 cw, ch: f32 = 320, 180
 
 // movement constants (Celeste-ish, keep for feel)
-GRAVITY :: 900.0
-JUMP_SPEED :: -280.0
-MAX_SPEED :: 110.0
-ACCEL :: 800.0
-FRICTION :: 700.0
-COYOTE_TIME :: 0.08
-JUMP_BUFFER :: 0.1
-HALF_GRAV_MULT :: 0.5
+GRAVITY :: f32(900.0)
+JUMP_SPEED :: f32(-280.0)
+MAX_SPEED :: f32(110.0)
+ACCEL :: f32(800.0)
+FRICTION :: f32(700.0)
+COYOTE_TIME :: f32(0.08)
+JUMP_BUFFER :: f32(0.1)
+HALF_GRAV_MULT :: f32(0.5)
 
-PLAYER_W :: 6.0
-PLAYER_H :: 10.0
-DIG_REACH :: 12.0
+PLAYER_W :: f32(6.0)
+PLAYER_H :: f32(10.0)
+DIG_REACH :: f32(12.0)
 
 // ---
 
