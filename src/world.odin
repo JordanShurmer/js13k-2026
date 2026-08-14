@@ -1,5 +1,7 @@
 package main
 
+import "core:runtime"
+
 // Helper procs that generate different assets at locations.
 // All drawing currently stubbed; later call into canvas foreign or pixel buffer.
 
