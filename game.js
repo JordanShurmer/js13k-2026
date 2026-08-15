@@ -602,11 +602,13 @@ async function boot() {
   try {
     const resp = await fetch('game.wasm');
     const bytes = await resp.arrayBuffer();
-    const { instance } = await WebAssembly.instantiate(bytes, {
-      env: {},
-      odin_env: { write: () => {} },
-    });
+    // Proper Odin runtime imports (required by latest js_wasm32 + core:math)
+    const memInterface = new odin.WasmMemoryInterface();
+    const imports = odin.setupDefaultImports(memInterface, null, memInterface.memory);
+    const { instance } = await WebAssembly.instantiate(bytes, imports);
     wasm = instance;
+    memInterface.setExports(instance.exports);
+    if (instance.exports.memory) memInterface.setMemory(instance.exports.memory);
     if (wasm.exports.init) wasm.exports.init();
     if (wasm.exports.set_view) wasm.exports.set_view(W, H);
     requestAnimationFrame(frame);
@@ -617,6 +619,16 @@ async function boot() {
     ctx.fillStyle = '#f88';
     ctx.font = '10px monospace';
     ctx.fillText('boot fail', 8, 20);
+    const msg = (e && (e.message || e.toString())) || 'unknown';
+    ctx.fillText(String(msg).slice(0, 80), 8, 34);
+    if (e && e.stack) {
+      const lines = String(e.stack).split('\n').slice(0, 6);
+      let y = 48;
+      for (const l of lines) {
+        ctx.fillText(l.slice(0, 90), 8, y);
+        y += 12;
+      }
+    }
   }
 }
 boot();
