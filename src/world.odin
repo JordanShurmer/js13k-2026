@@ -41,27 +41,59 @@ world_to_tile :: proc(wx, wy: f32) -> (int, int) {
     return int(wx / TILE_SIZE), int(wy / TILE_SIZE)
 }
 
-// Fill solid, carve a small starting room + short tunnel.
+// Fill solid, carve a more interesting starting ruin: chamber, tunnel, shafts, rubble niches.
 gen_world :: proc() {
     for i in 0..<len(tiles) {
         tiles[i] = Tile_Solid
     }
-    // starting chamber around player spawn
-    for ty in 20..<30 {
-        for tx in 5..<20 {
+    // starting chamber
+    for ty in 18..<32 {
+        for tx in 4..<22 {
             set_tile(tx, ty, Tile_Air)
         }
     }
-    // short horizontal tunnel
-    for tx in 20..<40 {
+    // floor platforms / steps inside chamber
+    for tx in 6..<12 {
+        set_tile(tx, 28, Tile_Solid)
+        set_tile(tx, 29, Tile_Solid)
+    }
+    for tx in 14..<19 {
+        set_tile(tx, 26, Tile_Solid)
+    }
+    // short horizontal tunnel with uneven roof
+    for tx in 22..<48 {
         set_tile(tx, 24, Tile_Air)
         set_tile(tx, 25, Tile_Air)
+        if tx % 5 != 0 {
+            set_tile(tx, 23, Tile_Air)
+        }
     }
-    // a few vertical shafts for interest
-    for ty in 10..<24 {
-        set_tile(30, ty, Tile_Air)
-        set_tile(31, ty, Tile_Air)
+    // vertical shaft
+    for ty in 8..<25 {
+        set_tile(36, ty, Tile_Air)
+        set_tile(37, ty, Tile_Air)
     }
+    // small upper chamber
+    for ty in 6..<14 {
+        for tx in 30..<44 {
+            set_tile(tx, ty, Tile_Air)
+        }
+    }
+    // a couple of pillars / ruin supports
+    for ty in 20..<28 {
+        set_tile(10, ty, Tile_Solid)
+        set_tile(11, ty, Tile_Solid)
+    }
+    for ty in 22..<28 {
+        set_tile(16, ty, Tile_Solid)
+    }
+    // rubble pockets on floor
+    set_tile(8, 31, Tile_Solid)
+    set_tile(9, 31, Tile_Solid)
+    set_tile(18, 31, Tile_Solid)
+    set_tile(25, 25, Tile_Solid)
+    set_tile(26, 25, Tile_Solid)
+    set_tile(40, 25, Tile_Solid)
 }
 
 // Dig a small brush of tiles around a world point (the dig tool).

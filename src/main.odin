@@ -42,7 +42,7 @@ HALF_GRAV_MULT :: f32(0.5)
 
 PLAYER_W :: f32(6.0)
 PLAYER_H :: f32(10.0)
-DIG_REACH :: f32(12.0)
+DIG_REACH :: f32(14.0)
 
 // ---
 
@@ -216,6 +216,21 @@ export_cam_x :: proc "c" () -> f32 {
 export_cam_y :: proc "c" () -> f32 {
     context = runtime.default_context()
     return cam.y
+}
+@(export)
+export_time :: proc "c" () -> f32 {
+    context = runtime.default_context()
+    return time
+}
+@(export)
+export_facing_x :: proc "c" () -> f32 {
+    context = runtime.default_context()
+    return player_facing.x
+}
+@(export)
+export_facing_y :: proc "c" () -> f32 {
+    context = runtime.default_context()
+    return player_facing.y
 }
 
 // ---
