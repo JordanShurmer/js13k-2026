@@ -1,4 +1,4 @@
-// Grug glue — mobile first, atmosphere, bottom-left floating buttons
+// Grug glue — mobile first, letterboxed, bottom-left floating buttons
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -11,10 +11,11 @@ let stick = null;
 let jumpIds = new Set();
 let actIds = new Set();
 
-const BTN_SIZE = 48;
-// bottom-left, floating above the game
-const BTN_JUMP = { x: 10, y: H - 10 - BTN_SIZE * 2 - 12, w: BTN_SIZE, h: BTN_SIZE };
-const BTN_ACT  = { x: 10, y: H - 10 - BTN_SIZE,          w: BTN_SIZE, h: BTN_SIZE };
+const BTN = 44;
+const M = 8;
+// true bottom-left of the game canvas
+const BTN_JUMP = { x: M, y: H - M - BTN * 2 - 10, w: BTN, h: BTN };
+const BTN_ACT  = { x: M, y: H - M - BTN,          w: BTN, h: BTN };
 
 const parts = [];
 const MAX_PARTS = 40;
@@ -77,7 +78,7 @@ function getInput() {
     const dx = stick.x - stick.cx;
     const dy = stick.y - stick.cy;
     const len = Math.hypot(dx, dy) || 1;
-    const maxR = 38;
+    const maxR = 36;
     const cl = Math.min(len, maxR);
     x = (dx / len) * (cl / maxR);
     y = (dy / len) * (cl / maxR);
@@ -97,7 +98,7 @@ function getInput() {
 function clear() {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#06040c');
-  g.addColorStop(0.6, '#0a0812');
+  g.addColorStop(0.55, '#0a0812');
   g.addColorStop(1, '#0c0a14');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
@@ -107,15 +108,14 @@ function drawWorld(ex, t) {
   const tw = ex.export_world_w();
   const th = ex.export_world_h();
   const ts = ex.export_tile_size();
-  const camX = ex.export_cam_x();
-  const camY = ex.export_cam_y();
+  let camX = ex.export_cam_x();
+  let camY = ex.export_cam_y();
 
   const tx0 = Math.max(0, Math.floor(camX / ts) - 1);
   const ty0 = Math.max(0, Math.floor(camY / ts) - 1);
   const tx1 = Math.min(tw - 1, Math.ceil((camX + W) / ts) + 1);
   const ty1 = Math.min(th - 1, Math.ceil((camY + H) / ts) + 1);
 
-  // orb — last unicorn light in the ruins
   const orbWX = 15 * ts + 2;
   const orbWY = 22 * ts + 2;
   const orbSX = orbWX - camX;
@@ -146,7 +146,6 @@ function drawWorld(ex, t) {
       ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
       ctx.fillRect(sx, sy, ts, ts);
 
-      // edge shade
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       if (ex.export_get_tile(tx - 1, ty) === 0) ctx.fillRect(sx, sy, 1, ts);
       if (ex.export_get_tile(tx + 1, ty) === 0) ctx.fillRect(sx + ts - 1, sy, 1, ts);
@@ -155,13 +154,11 @@ function drawWorld(ex, t) {
     }
   }
 
-  // if somehow no solids, force a visible floor so we never get pure black void
   if (solids === 0) {
     ctx.fillStyle = '#3a2a1a';
-    ctx.fillRect(0, H - 20, W, 20);
+    ctx.fillRect(0, H - 24, W, 24);
   }
 
-  // orb glow layers
   const rad = 4 + pulse * 4;
   ctx.beginPath();
   ctx.arc(orbSX, orbSY, rad * 3.2, 0, Math.PI * 2);
@@ -203,53 +200,58 @@ function drawPlayer(ex) {
 }
 
 function drawUI(inp) {
-  // semi-transparent floating buttons bottom-left
-  function btn(r, pressed, drawIcon) {
-    ctx.fillStyle = pressed ? 'rgba(232,224,255,0.95)' : 'rgba(28,24,40,0.82)';
+  function btn(r, pressed, icon) {
+    ctx.fillStyle = pressed ? 'rgba(232,224,255,0.95)' : 'rgba(22,18,32,0.88)';
+    // rounded-ish via extra fill
     ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.strokeStyle = pressed ? '#fff' : 'rgba(180,160,220,0.55)';
+    ctx.strokeStyle = pressed ? '#fff' : 'rgba(170,150,210,0.6)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-    drawIcon(r, pressed);
+    icon(r, pressed);
   }
 
+  // JUMP — up chevron
   btn(BTN_JUMP, inp.jump, (r, p) => {
-    ctx.fillStyle = p ? '#2a2040' : '#b0a0d0';
+    ctx.fillStyle = p ? '#2a2040' : '#c0b0e0';
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 10);
-    ctx.lineTo(cx + 8, cy + 2);
-    ctx.lineTo(cx + 3, cy + 2);
-    ctx.lineTo(cx + 3, cy + 10);
-    ctx.lineTo(cx - 3, cy + 10);
-    ctx.lineTo(cx - 3, cy + 2);
-    ctx.lineTo(cx - 8, cy + 2);
+    ctx.moveTo(cx, cy - 11);
+    ctx.lineTo(cx + 9, cy + 1);
+    ctx.lineTo(cx + 3, cy + 1);
+    ctx.lineTo(cx + 3, cy + 11);
+    ctx.lineTo(cx - 3, cy + 11);
+    ctx.lineTo(cx - 3, cy + 1);
+    ctx.lineTo(cx - 9, cy + 1);
     ctx.closePath();
     ctx.fill();
   });
 
+  // DIG — clear pickaxe (head on top, handle down)
   btn(BTN_ACT, inp.action, (r, p) => {
-    ctx.fillStyle = p ? '#2a2040' : '#b0a0d0';
+    ctx.fillStyle = p ? '#2a2040' : '#c0b0e0';
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-    // pickaxe
-    ctx.fillRect(cx - 1, cy - 10, 2, 14);
+    // head
     ctx.beginPath();
-    ctx.moveTo(cx - 8, cy - 5);
-    ctx.lineTo(cx + 8, cy - 5);
-    ctx.lineTo(cx + 5, cy + 2);
-    ctx.lineTo(cx - 5, cy + 2);
+    ctx.moveTo(cx - 10, cy - 2);
+    ctx.lineTo(cx - 2, cy - 10);
+    ctx.lineTo(cx + 2, cy - 10);
+    ctx.lineTo(cx + 10, cy - 2);
+    ctx.lineTo(cx + 6, cy + 2);
+    ctx.lineTo(cx - 6, cy + 2);
     ctx.closePath();
     ctx.fill();
+    // handle
+    ctx.fillRect(cx - 1.5, cy + 1, 3, 12);
   });
 
   if (stick) {
     ctx.beginPath();
-    ctx.arc(stick.cx, stick.cy, 36, 0, Math.PI * 2);
+    ctx.arc(stick.cx, stick.cy, 34, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(200,180,255,0.22)';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(stick.x, stick.y, 15, 0, Math.PI * 2);
+    ctx.arc(stick.x, stick.y, 14, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(220,200,255,0.4)';
     ctx.fill();
   }
