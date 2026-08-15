@@ -23,14 +23,15 @@ time: f32
 
 cw, ch: f32 = 320, 180
 
-GRAVITY: f32 : 900
-JUMP_SPEED: f32 : -280
-MAX_SPEED: f32 : 110
-ACCEL: f32 : 800
-FRICTION: f32 : 700
-COYOTE_TIME: f32 : 0.08
-JUMP_BUFFER: f32 : 0.1
-HALF_GRAV_MULT: f32 : 0.5
+// Slowed down for better feel / control (was much snappier)
+GRAVITY: f32 : 650
+JUMP_SPEED: f32 : -220
+MAX_SPEED: f32 : 55
+ACCEL: f32 : 420
+FRICTION: f32 : 380
+COYOTE_TIME: f32 : 0.1
+JUMP_BUFFER: f32 : 0.12
+HALF_GRAV_MULT: f32 : 0.55
 
 PLAYER_W: f32 : 6
 PLAYER_H: f32 : 10
@@ -43,6 +44,15 @@ init :: proc "c" () {
     player_pos = {12 * TILE_SIZE, 27 * TILE_SIZE}
     player_vel = {}
     cam = player_pos - Vec2{cw * 0.5, ch * 0.5}
+}
+
+@(export)
+set_view :: proc "c" (w, h: f32) {
+    context = runtime.default_context()
+    if w > 16 && h > 16 {
+        cw = w
+        ch = h
+    }
 }
 
 @(export)
@@ -186,6 +196,12 @@ export_time :: proc "c" () -> f32 { context = runtime.default_context(); return 
 export_facing_x :: proc "c" () -> f32 { context = runtime.default_context(); return player_facing.x }
 @(export)
 export_facing_y :: proc "c" () -> f32 { context = runtime.default_context(); return player_facing.y }
+@(export)
+export_view_w :: proc "c" () -> f32 { context = runtime.default_context(); return cw }
+@(export)
+export_view_h :: proc "c" () -> f32 { context = runtime.default_context(); return ch }
+@(export)
+export_on_ground :: proc "c" () -> i32 { context = runtime.default_context(); return on_ground ? 1 : 0 }
 
 @(export)
 draw :: proc "c" () { context = runtime.default_context() }

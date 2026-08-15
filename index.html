@@ -2,14 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
 <title>js13k dig</title>
 <style>
-html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none}
-#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+html,body{margin:0;height:100%;width:100%;background:#000;overflow:hidden;touch-action:none}
+#wrap{position:fixed;inset:0}
 canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;
-  width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16));
-  max-width:100%;max-height:100%}
+  width:100%;height:100%;position:absolute;inset:0}
 </style>
 </head>
 <body>
