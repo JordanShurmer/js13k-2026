@@ -2,10 +2,8 @@ package main
 
 import "base:runtime"
 
-// --- tiny types ---
 Vec2 :: [2]f32
 
-// --- game state ---
 player_pos: Vec2
 player_vel: Vec2
 player_facing: Vec2 = {1, 0}
@@ -25,24 +23,23 @@ time: f32
 
 cw, ch: f32 = 320, 180
 
-GRAVITY :: 900.0
-JUMP_SPEED :: -280.0
-MAX_SPEED :: 110.0
-ACCEL :: 800.0
-FRICTION :: 700.0
-COYOTE_TIME :: 0.08
-JUMP_BUFFER :: 0.1
-HALF_GRAV_MULT :: 0.5
+GRAVITY: f32 : 900
+JUMP_SPEED: f32 : -280
+MAX_SPEED: f32 : 110
+ACCEL: f32 : 800
+FRICTION: f32 : 700
+COYOTE_TIME: f32 : 0.08
+JUMP_BUFFER: f32 : 0.1
+HALF_GRAV_MULT: f32 : 0.5
 
-PLAYER_W :: 6.0
-PLAYER_H :: 10.0
-DIG_REACH :: 14.0
+PLAYER_W: f32 : 6
+PLAYER_H: f32 : 10
+DIG_REACH: f32 : 14
 
 @(export)
 init :: proc "c" () {
     context = runtime.default_context()
     gen_world()
-    // spawn on solid floor of starting chamber
     player_pos = {12 * TILE_SIZE, 27 * TILE_SIZE}
     player_vel = {}
     cam = player_pos - Vec2{cw * 0.5, ch * 0.5}
@@ -172,7 +169,7 @@ move_and_collide :: proc(dx, dy: f32) {
 
 update_camera :: proc() {
     target := player_pos - Vec2{cw * 0.5 - PLAYER_W * 0.5, ch * 0.5 - PLAYER_H * 0.5}
-    cam = approach_v(cam, target, 8.0 * 60.0 * dt)
+    cam = approach_v(cam, target, 8 * 60 * dt)
 }
 
 @(export)
