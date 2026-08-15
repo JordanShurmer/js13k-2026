@@ -7,6 +7,7 @@ Vec2 :: [2]f32
 player_pos: Vec2
 player_vel: Vec2
 player_facing: Vec2 = {1, 0}
+dig_facing: Vec2 = {1, 0}
 on_ground: bool
 coyote: f32
 jump_buf: f32
@@ -17,6 +18,8 @@ inp_x: f32
 inp_y: f32
 inp_jump: bool
 inp_action: bool
+dig_inp_x: f32
+dig_inp_y: f32
 
 dt: f32
 time: f32
@@ -36,7 +39,7 @@ HALF_GRAV_MULT: f32 : 0.5
 
 PLAYER_W: f32 : 6
 PLAYER_H: f32 : 10
-DIG_REACH: f32 : 14
+DIG_REACH: f32 : 16
 
 @(export)
 init :: proc "c" () {
@@ -57,12 +60,14 @@ set_view :: proc "c" (w, h: f32) {
 }
 
 @(export)
-set_input :: proc "c" (x, y: f32, jump, action: bool) {
+set_input :: proc "c" (x, y: f32, jump, action: bool, digx, digy: f32) {
     context = runtime.default_context()
     inp_x = x
     inp_y = y
     inp_jump = jump
     inp_action = action
+    dig_inp_x = digx
+    dig_inp_y = digy
 }
 
 @(export)
@@ -80,12 +85,18 @@ update :: proc "c" () {
 }
 
 update_player :: proc() {
+    // Movement facing (eye / look) from move stick / keys only
     if abs(inp_x) > 0.2 || abs(inp_y) > 0.2 {
         if abs(inp_x) >= abs(inp_y) {
             player_facing = {inp_x > 0 ? 1 : -1, 0}
         } else {
             player_facing = {0, inp_y > 0 ? 1 : -1}
         }
+    }
+
+    // Dig direction independent: stick on dig button (or keyboard fallback via dig_inp)
+    if abs(dig_inp_x) > 0.15 || abs(dig_inp_y) > 0.15 {
+        dig_facing = {dig_inp_x, dig_inp_y}
     }
 
     target := inp_x * MAX_SPEED
@@ -122,10 +133,15 @@ update_player :: proc() {
     move_and_collide(player_vel.x * dt, 0)
     move_and_collide(0, player_vel.y * dt)
 
+    // Near-field plasma dig: clear every tile along the beam from body to tip
     if inp_action {
-        dig_x := player_pos.x + PLAYER_W * 0.5 + player_facing.x * DIG_REACH
-        dig_y := player_pos.y + PLAYER_H * 0.5 + player_facing.y * DIG_REACH
-        dig_at(dig_x, dig_y)
+        steps := 5
+        for i in 0..<steps {
+            t := f32(i) / f32(steps - 1)
+            dig_x := player_pos.x + PLAYER_W * 0.5 + dig_facing.x * DIG_REACH * t
+            dig_y := player_pos.y + PLAYER_H * 0.5 + dig_facing.y * DIG_REACH * t
+            dig_at(dig_x, dig_y)
+        }
     }
 }
 
@@ -197,6 +213,10 @@ export_time :: proc "c" () -> f32 { context = runtime.default_context(); return 
 export_facing_x :: proc "c" () -> f32 { context = runtime.default_context(); return player_facing.x }
 @(export)
 export_facing_y :: proc "c" () -> f32 { context = runtime.default_context(); return player_facing.y }
+@(export)
+export_dig_facing_x :: proc "c" () -> f32 { context = runtime.default_context(); return dig_facing.x }
+@(export)
+export_dig_facing_y :: proc "c" () -> f32 { context = runtime.default_context(); return dig_facing.y }
 @(export)
 export_on_ground :: proc "c" () -> i32 { context = runtime.default_context(); return on_ground ? 1 : 0 }
 @(export)

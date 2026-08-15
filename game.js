@@ -1,4 +1,5 @@
 // Grug glue — full-screen 1:1 view, debug HUD, slowed feel
+// UX: round diagonal GB-mirrored buttons (BL), dig = dual button+joystick, plasma dig along beam
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -7,29 +8,31 @@ canvas.width = W;
 canvas.height = H;
 
 let wasm;
-let stick = null;
+let stick = null;      // movement stick (free touch)
+let digStick = null;   // dig dual-purpose stick (from dig button)
 let jumpIds = new Set();
-let actIds = new Set();
 
-// Gameboy-style face buttons — bottom left, stacked (positions refreshed on resize)
-const BTN = 36;
-const GAP = 6;
-const M = 6;
-let BTN_JUMP = { x: M, y: H - M - BTN * 2 - GAP, w: BTN, h: BTN };
-let BTN_ACT  = { x: M, y: H - M - BTN,           w: BTN, h: BTN };
+// Round buttons — diagonal out of bottom-left corner (Gameboy face buttons, mirrored)
+const BR = 18;
+const M = 10;
+const DOFF = 30; // diagonal offset
+let jumpBtn = { cx: 0, cy: 0, r: BR };
+let digBtn  = { cx: 0, cy: 0, r: BR };
 
 const parts = [];
-const MAX_PARTS = 40;
+const MAX_PARTS = 48;
 
-// Debug
-let showDebug = false;
+// Debug — start on so mobile sees it immediately; F or top-left tap toggles
+let showDebug = true;
 let fps = 0;
 let fpsAcc = 0, fpsFrames = 0, fpsLast = performance.now();
 let fileSizes = { html: 0, js: 0, wasm: 0, odin: 0, total: 0, zipEst: 0 };
+const DBG_TAP = { x: 0, y: 0, w: 80, h: 110 }; // top-left hit area for toggle
 
 function layoutButtons() {
-  BTN_JUMP = { x: M, y: H - M - BTN * 2 - GAP, w: BTN, h: BTN };
-  BTN_ACT  = { x: M, y: H - M - BTN,           w: BTN, h: BTN };
+  // Dig closer to corner, Jump diagonal up-right (coming out of corner)
+  digBtn  = { cx: M + BR,       cy: H - M - BR,       r: BR };
+  jumpBtn = { cx: M + BR + DOFF, cy: H - M - BR - DOFF, r: BR };
 }
 
 function resize() {
@@ -46,19 +49,31 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
+function inCircle(tx, ty, b) {
+  return Math.hypot(tx - b.cx, ty - b.cy) <= b.r + 6;
+}
+
 function inRect(tx, ty, r) {
   return tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h;
 }
 
-function spawnDig(sx, sy) {
-  for (let i = 0; i < 3 && parts.length < MAX_PARTS; i++) {
+function spawnPlasma(sx, sy, dx, dy) {
+  // Near-field plasma sparks along the dig beam
+  for (let i = 0; i < 2 && parts.length < MAX_PARTS; i++) {
+    const side = (Math.random() - 0.5) * 10;
+    const along = (Math.random() - 0.3) * 8;
+    const px = sx + dx * along - dy * side * 0.4;
+    const py = sy + dy * along + dx * side * 0.4;
+    const speed = 20 + Math.random() * 40;
+    const ang = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.4;
     parts.push({
-      x: sx + (Math.random() - 0.5) * 8,
-      y: sy + (Math.random() - 0.5) * 6,
-      vx: (Math.random() - 0.5) * 50,
-      vy: -25 - Math.random() * 35,
-      life: 0.3 + Math.random() * 0.25,
-      c: Math.random() > 0.4 ? '#6a4a32' : '#9a7a52'
+      x: px,
+      y: py,
+      vx: Math.cos(ang) * speed + (Math.random() - 0.5) * 20,
+      vy: Math.sin(ang) * speed + (Math.random() - 0.5) * 20 - 15,
+      life: 0.18 + Math.random() * 0.22,
+      c: Math.random() > 0.55 ? '#c8f0ff' : (Math.random() > 0.4 ? '#e8a0ff' : '#ffffff'),
+      s: 1 + (Math.random() * 1.5 | 0)
     });
   }
 }
@@ -69,27 +84,36 @@ canvas.addEventListener('touchstart', e => {
     const rect = canvas.getBoundingClientRect();
     const sx = (t.clientX - rect.left) * (W / rect.width);
     const sy = (t.clientY - rect.top) * (H / rect.height);
-    if (inRect(sx, sy, BTN_JUMP)) { jumpIds.add(t.identifier); continue; }
-    if (inRect(sx, sy, BTN_ACT))  { actIds.add(t.identifier); continue; }
+    // Top-left corner toggles debug (mobile)
+    if (inRect(sx, sy, DBG_TAP)) { showDebug = !showDebug; continue; }
+    if (inCircle(sx, sy, jumpBtn)) { jumpIds.add(t.identifier); continue; }
+    if (inCircle(sx, sy, digBtn)) {
+      digStick = { id: t.identifier, cx: digBtn.cx, cy: digBtn.cy, x: sx, y: sy };
+      continue;
+    }
     if (!stick) stick = { id: t.identifier, x: sx, y: sy, cx: sx, cy: sy };
   }
 }, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  if (!stick) return;
   for (const t of e.changedTouches) {
-    if (t.identifier !== stick.id) continue;
     const rect = canvas.getBoundingClientRect();
-    stick.x = (t.clientX - rect.left) * (W / rect.width);
-    stick.y = (t.clientY - rect.top) * (H / rect.height);
+    const sx = (t.clientX - rect.left) * (W / rect.width);
+    const sy = (t.clientY - rect.top) * (H / rect.height);
+    if (stick && t.identifier === stick.id) {
+      stick.x = sx; stick.y = sy;
+    }
+    if (digStick && t.identifier === digStick.id) {
+      digStick.x = sx; digStick.y = sy;
+    }
   }
 }, { passive: false });
 
 function endTouch(t) {
   jumpIds.delete(t.identifier);
-  actIds.delete(t.identifier);
   if (stick && t.identifier === stick.id) stick = null;
+  if (digStick && t.identifier === digStick.id) digStick = null;
 }
 canvas.addEventListener('touchend', e => { for (const t of e.changedTouches) endTouch(t); });
 canvas.addEventListener('touchcancel', e => { for (const t of e.changedTouches) endTouch(t); });
@@ -101,26 +125,49 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
+// Also allow click on desktop top-left to toggle
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) * (W / rect.width);
+  const sy = (e.clientY - rect.top) * (H / rect.height);
+  if (inRect(sx, sy, DBG_TAP)) showDebug = !showDebug;
+});
+
+function stickVec(s, maxR) {
+  if (!s) return { x: 0, y: 0 };
+  const dx = s.x - s.cx;
+  const dy = s.y - s.cy;
+  const len = Math.hypot(dx, dy) || 1;
+  const cl = Math.min(len, maxR);
+  return { x: (dx / len) * (cl / maxR), y: (dy / len) * (cl / maxR) };
+}
+
 function getInput() {
   let x = 0, y = 0;
   if (stick) {
-    const dx = stick.x - stick.cx;
-    const dy = stick.y - stick.cy;
-    const len = Math.hypot(dx, dy) || 1;
-    const maxR = 34;
-    const cl = Math.min(len, maxR);
-    x = (dx / len) * (cl / maxR);
-    y = (dy / len) * (cl / maxR);
+    const v = stickVec(stick, 34);
+    x = v.x; y = v.y;
   } else {
     if (keys['ArrowLeft'] || keys['KeyA']) x -= 1;
     if (keys['ArrowRight'] || keys['KeyD']) x += 1;
     if (keys['ArrowUp'] || keys['KeyW']) y -= 1;
     if (keys['ArrowDown'] || keys['KeyS']) y += 1;
   }
+
+  let digx = 0, digy = 0;
+  if (digStick) {
+    const v = stickVec(digStick, 28);
+    digx = v.x; digy = v.y;
+  } else if (keys['KeyX']) {
+    // keyboard dig inherits move direction (independent only via digStick)
+    digx = x; digy = y;
+  }
+
   return {
     x, y,
     jump: jumpIds.size > 0 || keys['KeyZ'] || keys['Space'],
-    action: actIds.size > 0 || keys['KeyX']
+    action: !!digStick || !!keys['KeyX'],
+    digx, digy
   };
 }
 
@@ -247,7 +294,7 @@ function drawWorld(ex, t) {
   ctx.fill();
 
   const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.25, W * 0.5, H * 0.5, H * 0.85);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(0, 'rgba(0,0,5,0)');
   vg.addColorStop(1, 'rgba(0,0,5,0.55)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
@@ -279,59 +326,91 @@ function drawPlayer(ex) {
   ctx.fillRect(exx + (fx >= 0 ? 1 : 0), py + 2, 1, 1);
 }
 
-function drawGBButton(r, pressed, glyph) {
-  const x = r.x, y = r.y, w = r.w, h = r.h;
+function drawRoundBtn(b, pressed, glyph) {
+  const cx = b.cx, cy = b.cy, r = b.r;
   const o = pressed ? 1 : 0;
 
   if (!pressed) {
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(x + 2, y + 3, w, h);
+    ctx.beginPath();
+    ctx.arc(cx + 1.5, cy + 2.5, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
   }
 
+  // outer body
+  ctx.beginPath();
+  ctx.arc(cx + o, cy + o, r, 0, Math.PI * 2);
   ctx.fillStyle = pressed ? '#3a3548' : '#4a4560';
-  ctx.fillRect(x + o, y + o, w, h);
+  ctx.fill();
 
-  ctx.fillStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.22)';
-  ctx.fillRect(x + o, y + o, w, 2);
-  ctx.fillRect(x + o, y + o, 2, h);
+  // top highlight
+  ctx.beginPath();
+  ctx.arc(cx + o, cy + o - 1, r - 1, Math.PI * 1.1, Math.PI * 1.9);
+  ctx.strokeStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(x + o, y + o + h - 2, w, 2);
-  ctx.fillRect(x + o + w - 2, y + o, 2, h);
-
+  // inner face
+  ctx.beginPath();
+  ctx.arc(cx + o, cy + o, r - 4, 0, Math.PI * 2);
   ctx.fillStyle = pressed ? '#2e2a3a' : '#3e3a50';
-  ctx.fillRect(x + o + 3, y + o + 3, w - 6, h - 6);
+  ctx.fill();
 
+  // glyph
   ctx.fillStyle = pressed ? '#9a90b8' : '#d0c8e8';
-  glyph(x + o + w / 2, y + o + h / 2);
+  glyph(cx + o, cy + o);
 }
 
 function drawUI(inp) {
-  drawGBButton(BTN_JUMP, inp.jump, (cx, cy) => {
+  // Jump (higher, outer on the diagonal)
+  drawRoundBtn(jumpBtn, inp.jump, (cx, cy) => {
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 7);
-    ctx.lineTo(cx + 6, cy + 1);
+    ctx.moveTo(cx, cy - 6);
+    ctx.lineTo(cx + 5, cy + 1);
+    ctx.lineTo(cx + 1.5, cy + 1);
+    ctx.lineTo(cx + 1.5, cy + 6);
+    ctx.lineTo(cx - 1.5, cy + 6);
+    ctx.lineTo(cx - 1.5, cy + 1);
+    ctx.lineTo(cx - 5, cy + 1);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // Dig / plasma (closer to corner) — dual purpose: shows stick when active
+  const digPressed = inp.action;
+  drawRoundBtn(digBtn, digPressed, (cx, cy) => {
+    // plasma / dig glyph: small vertical + diamond tip
+    ctx.fillRect(cx - 1, cy - 1, 2, 7);
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, cy - 2);
+    ctx.lineTo(cx, cy - 7);
+    ctx.lineTo(cx + 5, cy - 2);
     ctx.lineTo(cx + 2, cy + 1);
-    ctx.lineTo(cx + 2, cy + 7);
-    ctx.lineTo(cx - 2, cy + 7);
     ctx.lineTo(cx - 2, cy + 1);
-    ctx.lineTo(cx - 6, cy + 1);
     ctx.closePath();
     ctx.fill();
   });
 
-  drawGBButton(BTN_ACT, inp.action, (cx, cy) => {
-    ctx.fillRect(cx - 1, cy - 2, 2, 9);
+  // Dig stick overlay when active (dual joystick)
+  if (digStick) {
     ctx.beginPath();
-    ctx.moveTo(cx - 7, cy - 1);
-    ctx.lineTo(cx, cy - 8);
-    ctx.lineTo(cx + 7, cy - 1);
-    ctx.lineTo(cx + 3, cy + 2);
-    ctx.lineTo(cx - 3, cy + 2);
-    ctx.closePath();
+    ctx.arc(digBtn.cx, digBtn.cy, 26, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180,140,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const v = stickVec(digStick, 28);
+    const kx = digBtn.cx + v.x * 22;
+    const ky = digBtn.cy + v.y * 22;
+    ctx.beginPath();
+    ctx.arc(kx, ky, 9, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200,160,255,0.45)';
     ctx.fill();
-  });
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 
+  // Movement stick
   if (stick) {
     ctx.beginPath();
     ctx.arc(stick.cx, stick.cy, 30, 0, Math.PI * 2);
@@ -355,15 +434,16 @@ function updateParts(dt) {
     if (p.life <= 0) { parts.splice(i, 1); continue; }
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vy += 200 * dt;
+    p.vy += 120 * dt; // lighter gravity for plasma
   }
 }
 
 function drawParts() {
   for (const p of parts) {
-    ctx.globalAlpha = Math.max(0, p.life * 2.8);
+    ctx.globalAlpha = Math.max(0, p.life * 3.2);
     ctx.fillStyle = p.c;
-    ctx.fillRect(p.x | 0, p.y | 0, 2, 2);
+    const s = p.s || 2;
+    ctx.fillRect((p.x | 0), (p.y | 0), s, s);
   }
   ctx.globalAlpha = 1;
 }
@@ -435,20 +515,27 @@ function frame(now) {
     const ex = wasm.exports;
     if (ex.set_view) ex.set_view(W, H);
     ex.set_dt(dt);
-    ex.set_input(inp.x, inp.y, inp.jump, inp.action);
+    ex.set_input(inp.x, inp.y, inp.jump, inp.action, inp.digx, inp.digy);
     ex.update();
 
     const t = ex.export_time ? ex.export_time() : now / 1000;
     const camX = ex.export_cam_x();
     const camY = ex.export_cam_y();
 
-    if (inp.action && now - lastDig > 55) {
+    if (inp.action && now - lastDig > 40) {
       lastDig = now;
-      const px = ex.export_player_x();
-      const py = ex.export_player_y();
-      const fx = ex.export_facing_x ? ex.export_facing_x() : 1;
-      const fy = ex.export_facing_y ? ex.export_facing_y() : 0;
-      spawnDig(px - camX + 3 + fx * 12, py - camY + 5 + fy * 12);
+      let dfx = inp.digx, dfy = inp.digy;
+      if (Math.abs(dfx) + Math.abs(dfy) < 0.12) {
+        // fallback to dig_facing or player facing
+        dfx = ex.export_dig_facing_x ? ex.export_dig_facing_x() : (ex.export_facing_x ? ex.export_facing_x() : 1);
+        dfy = ex.export_dig_facing_y ? ex.export_dig_facing_y() : (ex.export_facing_y ? ex.export_facing_y() : 0);
+      }
+      const px = ex.export_player_x() - camX + 3;
+      const py = ex.export_player_y() - camY + 5;
+      const reach = 16;
+      for (let s = 0; s <= 1.01; s += 0.25) {
+        spawnPlasma(px + dfx * reach * s, py + dfy * reach * s, dfx, dfy);
+      }
     }
 
     updateParts(dt);
