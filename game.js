@@ -1,5 +1,4 @@
-// Grug glue — full-screen 1:1 view, debug HUD, slowed feel
-// UX: round diagonal GB-mirrored buttons (BL), dig = dual button+joystick, plasma dig along beam
+// Grug glue — full-screen 1:1, orb follow + fog, round diagonal GB buttons, dig dual-stick plasma
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -12,10 +11,10 @@ let stick = null;      // movement stick (free touch)
 let digStick = null;   // dig dual-purpose stick (from dig button)
 let jumpIds = new Set();
 
-// Round buttons — diagonal out of bottom-left corner (Gameboy face buttons, mirrored)
+// Round buttons — diagonal out of bottom-left corner (Gameboy face, mirrored)
 const BR = 18;
 const M = 10;
-const DOFF = 30; // diagonal offset
+const DOFF = 30;
 let jumpBtn = { cx: 0, cy: 0, r: BR };
 let digBtn  = { cx: 0, cy: 0, r: BR };
 
@@ -27,16 +26,15 @@ let showDebug = true;
 let fps = 0;
 let fpsAcc = 0, fpsFrames = 0, fpsLast = performance.now();
 let fileSizes = { html: 0, js: 0, wasm: 0, odin: 0, total: 0, zipEst: 0 };
-const DBG_TAP = { x: 0, y: 0, w: 80, h: 110 }; // top-left hit area for toggle
+const DBG_TAP = { x: 0, y: 0, w: 80, h: 110 };
 
 function layoutButtons() {
-  // Dig closer to corner, Jump diagonal up-right (coming out of corner)
-  digBtn  = { cx: M + BR,       cy: H - M - BR,       r: BR };
+  // Dig closer to corner, Jump diagonal up-right
+  digBtn  = { cx: M + BR,        cy: H - M - BR,        r: BR };
   jumpBtn = { cx: M + BR + DOFF, cy: H - M - BR - DOFF, r: BR };
 }
 
 function resize() {
-  // 1:1 CSS pixels — no upscale, just more world on larger screens
   const w = Math.max(160, Math.floor(window.innerWidth || document.documentElement.clientWidth));
   const h = Math.max(90, Math.floor(window.innerHeight || document.documentElement.clientHeight));
   if (w === W && h === H) return;
@@ -58,7 +56,6 @@ function inRect(tx, ty, r) {
 }
 
 function spawnPlasma(sx, sy, dx, dy) {
-  // Near-field plasma sparks along the dig beam
   for (let i = 0; i < 2 && parts.length < MAX_PARTS; i++) {
     const side = (Math.random() - 0.5) * 10;
     const along = (Math.random() - 0.3) * 8;
@@ -67,8 +64,7 @@ function spawnPlasma(sx, sy, dx, dy) {
     const speed = 20 + Math.random() * 40;
     const ang = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.4;
     parts.push({
-      x: px,
-      y: py,
+      x: px, y: py,
       vx: Math.cos(ang) * speed + (Math.random() - 0.5) * 20,
       vy: Math.sin(ang) * speed + (Math.random() - 0.5) * 20 - 15,
       life: 0.18 + Math.random() * 0.22,
@@ -84,7 +80,6 @@ canvas.addEventListener('touchstart', e => {
     const rect = canvas.getBoundingClientRect();
     const sx = (t.clientX - rect.left) * (W / rect.width);
     const sy = (t.clientY - rect.top) * (H / rect.height);
-    // Top-left corner toggles debug (mobile)
     if (inRect(sx, sy, DBG_TAP)) { showDebug = !showDebug; continue; }
     if (inCircle(sx, sy, jumpBtn)) { jumpIds.add(t.identifier); continue; }
     if (inCircle(sx, sy, digBtn)) {
@@ -101,12 +96,8 @@ canvas.addEventListener('touchmove', e => {
     const rect = canvas.getBoundingClientRect();
     const sx = (t.clientX - rect.left) * (W / rect.width);
     const sy = (t.clientY - rect.top) * (H / rect.height);
-    if (stick && t.identifier === stick.id) {
-      stick.x = sx; stick.y = sy;
-    }
-    if (digStick && t.identifier === digStick.id) {
-      digStick.x = sx; digStick.y = sy;
-    }
+    if (stick && t.identifier === stick.id) { stick.x = sx; stick.y = sy; }
+    if (digStick && t.identifier === digStick.id) { digStick.x = sx; digStick.y = sy; }
   }
 }, { passive: false });
 
@@ -125,7 +116,6 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// Also allow click on desktop top-left to toggle
 canvas.addEventListener('mousedown', e => {
   const rect = canvas.getBoundingClientRect();
   const sx = (e.clientX - rect.left) * (W / rect.width);
@@ -159,8 +149,7 @@ function getInput() {
     const v = stickVec(digStick, 28);
     digx = v.x; digy = v.y;
   } else if (keys['KeyX']) {
-    // keyboard dig inherits move direction (independent only via digStick)
-    digx = x; digy = y;
+    digx = x; digy = y; // keyboard inherits move dir
   }
 
   return {
@@ -190,40 +179,55 @@ function drawWorld(ex, t) {
   const tx1 = Math.min(tw - 1, Math.ceil((camX + W) / ts) + 1);
   const ty1 = Math.min(th - 1, Math.ceil((camY + H) / ts) + 1);
 
-  const orbWX = 15 * ts + 2;
-  const orbWY = 22 * ts + 2;
+  const orbWX = ex.export_orb_x ? ex.export_orb_x() : (18 * ts + 2);
+  const orbWY = ex.export_orb_y ? ex.export_orb_y() : (26 * ts + 2);
   const orbSX = orbWX - camX;
   const orbSY = orbWY - camY;
   const pulse = 0.55 + 0.45 * Math.sin(t * 2.4);
 
+  const candleWX = 7 * ts + 2;
+  const candleWY = 31 * ts + 1;
+  const candleSX = candleWX - camX;
+  const candleSY = candleWY - camY;
+
   const pLX = px + 3;
   const pLY = py + 5;
 
-  const ORB_R = 72 + pulse * 18;
-  const PLY_R = 38;
+  const ORB_R = 88 + pulse * 22;
+  const PLY_R = 32;
+  const CANDLE_R = 36;
 
   let solids = 0;
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
-      const isSolid = ex.export_get_tile(tx, ty) !== 0;
+      const tile = ex.export_get_tile(tx, ty);
+      const isSolid = tile !== 0;
+      const isWood = tile === 2;
+      const isExpl = ex.export_get_explored ? (ex.export_get_explored(tx, ty) !== 0) : false;
       const wx = tx * ts + 2;
       const wy = ty * ts + 2;
 
       const dOrb = Math.hypot(wx - orbWX, wy - orbWY);
       const dPly = Math.hypot(wx - pLX, wy - pLY);
+      const dCan = Math.hypot(wx - candleWX, wy - candleWY);
 
       let L = 0;
       if (dOrb < ORB_R) {
         const u = 1 - dOrb / ORB_R;
-        L += (u * u) * (0.55 + pulse * 0.45);
+        L += (u * u) * (0.6 + pulse * 0.4);
       }
       if (dPly < PLY_R) {
         const u = 1 - dPly / PLY_R;
-        L += u * u * 0.35;
+        L += u * u * 0.28;
       }
-      L = Math.min(1.35, L);
+      if (dCan < CANDLE_R) {
+        const u = 1 - dCan / CANDLE_R;
+        L += u * u * (0.45 + 0.15 * Math.sin(t * 6));
+      }
+      if (isExpl) L = Math.max(L, 0.18);
+      L = Math.min(1.4, L);
 
-      if (L < 0.04) continue;
+      if (L < 0.035 && !isExpl) continue;
 
       const sx = Math.floor(tx * ts - camX);
       const sy = Math.floor(ty * ts - camY);
@@ -231,35 +235,43 @@ function drawWorld(ex, t) {
       if (isSolid) {
         solids++;
         const v = ((tx * 17 + ty * 31) & 7);
-        let r = 28 + v * 3;
-        let g = 20 + v * 2;
-        let b = 14 + (v & 3);
-
-        r = Math.min(255, r + L * 160);
-        g = Math.min(255, g + L * 100);
-        b = Math.min(255, b + L * 180);
-
-        if (dOrb < 28) {
-          const b2 = (1 - dOrb / 28) * pulse * 0.5;
-          r = Math.min(255, r + b2 * 80);
-          g = Math.min(255, g + b2 * 60);
-          b = Math.min(255, b + b2 * 100);
+        let r, g, b;
+        if (isWood) {
+          r = 48 + v * 4; g = 28 + v * 2; b = 12 + (v & 2);
+        } else {
+          r = 28 + v * 3; g = 20 + v * 2; b = 14 + (v & 3);
         }
-
+        r = Math.min(255, r + L * (isWood ? 140 : 160));
+        g = Math.min(255, g + L * (isWood ? 90 : 100));
+        b = Math.min(255, b + L * (isWood ? 40 : 180));
+        if (dOrb < 32) {
+          const b2 = (1 - dOrb / 32) * pulse * 0.55;
+          r = Math.min(255, r + b2 * 90);
+          g = Math.min(255, g + b2 * 70);
+          b = Math.min(255, b + b2 * 110);
+        }
+        if (dCan < 20) {
+          const c2 = (1 - dCan / 20) * 0.4;
+          r = Math.min(255, r + c2 * 120);
+          g = Math.min(255, g + c2 * 60);
+          b = Math.min(255, b + c2 * 10);
+        }
         ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
         ctx.fillRect(sx, sy, ts, ts);
-
-        if (L > 0.15) {
-          ctx.fillStyle = `rgba(0,0,0,${0.45 * Math.min(1, L)})`;
+        if (L > 0.12) {
+          ctx.fillStyle = `rgba(0,0,0,${0.4 * Math.min(1, L)})`;
           if (ex.export_get_tile(tx - 1, ty) === 0) ctx.fillRect(sx, sy, 1, ts);
           if (ex.export_get_tile(tx + 1, ty) === 0) ctx.fillRect(sx + ts - 1, sy, 1, ts);
           if (ex.export_get_tile(tx, ty - 1) === 0) ctx.fillRect(sx, sy, ts, 1);
           if (ex.export_get_tile(tx, ty + 1) === 0) ctx.fillRect(sx, sy + ts - 1, ts, 1);
         }
       } else {
-        if (L > 0.25) {
-          const a = (L - 0.25) * 0.12;
-          ctx.fillStyle = `rgba(120,90,180,${a})`;
+        if (L > 0.2) {
+          const a = (L - 0.2) * 0.1;
+          ctx.fillStyle = `rgba(100,80,160,${a})`;
+          ctx.fillRect(sx, sy, ts, ts);
+        } else if (isExpl) {
+          ctx.fillStyle = 'rgba(30,22,40,0.35)';
           ctx.fillRect(sx, sy, ts, ts);
         }
       }
@@ -271,6 +283,30 @@ function drawWorld(ex, t) {
     ctx.fillRect(0, H - 20, W, 20);
   }
 
+  // props: candle + book
+  if (candleSX > -20 && candleSX < W + 20 && candleSY > -20 && candleSY < H + 20) {
+    const bx = Math.floor(5 * ts - camX);
+    const by = Math.floor(31 * ts - camY);
+    ctx.fillStyle = '#3a2a18';
+    ctx.fillRect(bx, by, 10, 3);
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(bx + 1, by - 1, 8, 2);
+    ctx.fillStyle = '#2a1810';
+    ctx.fillRect(bx + 2, by, 6, 1);
+    ctx.fillStyle = '#c8b090';
+    ctx.fillRect(Math.floor(candleSX) - 1, Math.floor(candleSY) + 2, 3, 4);
+    const fp = 0.7 + 0.3 * Math.sin(t * 9);
+    ctx.beginPath();
+    ctx.arc(candleSX + 0.5, candleSY, 2.2 * fp, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,180,40,${0.5 + fp * 0.3})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(candleSX + 0.5, candleSY - 1, 1.1 * fp, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,240,160,${0.8})`;
+    ctx.fill();
+  }
+
+  // glowing orb
   const rad = 3.5 + pulse * 4.5;
   ctx.beginPath();
   ctx.arc(orbSX, orbSY, rad * 4.5, 0, Math.PI * 2);
@@ -294,7 +330,7 @@ function drawWorld(ex, t) {
   ctx.fill();
 
   const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.25, W * 0.5, H * 0.5, H * 0.85);
-  vg.addColorStop(0, 'rgba(0,0,5,0)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
   vg.addColorStop(1, 'rgba(0,0,5,0.55)');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
@@ -315,7 +351,6 @@ function drawPlayer(ex) {
   ctx.fillStyle = '#c8a0ff';
   ctx.fillRect(px, py, 6, 10);
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(px, py, 6, 1);
   ctx.fillRect(px, py + 9, 6, 1);
   ctx.fillRect(px, py, 1, 10);
   ctx.fillRect(px + 5, py, 1, 10);
@@ -337,32 +372,27 @@ function drawRoundBtn(b, pressed, glyph) {
     ctx.fill();
   }
 
-  // outer body
   ctx.beginPath();
   ctx.arc(cx + o, cy + o, r, 0, Math.PI * 2);
   ctx.fillStyle = pressed ? '#3a3548' : '#4a4560';
   ctx.fill();
 
-  // top highlight
   ctx.beginPath();
   ctx.arc(cx + o, cy + o - 1, r - 1, Math.PI * 1.1, Math.PI * 1.9);
   ctx.strokeStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // inner face
   ctx.beginPath();
   ctx.arc(cx + o, cy + o, r - 4, 0, Math.PI * 2);
   ctx.fillStyle = pressed ? '#2e2a3a' : '#3e3a50';
   ctx.fill();
 
-  // glyph
   ctx.fillStyle = pressed ? '#9a90b8' : '#d0c8e8';
   glyph(cx + o, cy + o);
 }
 
 function drawUI(inp) {
-  // Jump (higher, outer on the diagonal)
   drawRoundBtn(jumpBtn, inp.jump, (cx, cy) => {
     ctx.beginPath();
     ctx.moveTo(cx, cy - 6);
@@ -376,10 +406,8 @@ function drawUI(inp) {
     ctx.fill();
   });
 
-  // Dig / plasma (closer to corner) — dual purpose: shows stick when active
   const digPressed = inp.action;
   drawRoundBtn(digBtn, digPressed, (cx, cy) => {
-    // plasma / dig glyph: small vertical + diamond tip
     ctx.fillRect(cx - 1, cy - 1, 2, 7);
     ctx.beginPath();
     ctx.moveTo(cx - 5, cy - 2);
@@ -391,7 +419,6 @@ function drawUI(inp) {
     ctx.fill();
   });
 
-  // Dig stick overlay when active (dual joystick)
   if (digStick) {
     ctx.beginPath();
     ctx.arc(digBtn.cx, digBtn.cy, 26, 0, Math.PI * 2);
@@ -410,7 +437,6 @@ function drawUI(inp) {
     ctx.stroke();
   }
 
-  // Movement stick
   if (stick) {
     ctx.beginPath();
     ctx.arc(stick.cx, stick.cy, 30, 0, Math.PI * 2);
@@ -434,7 +460,7 @@ function updateParts(dt) {
     if (p.life <= 0) { parts.splice(i, 1); continue; }
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vy += 120 * dt; // lighter gravity for plasma
+    p.vy += 120 * dt;
   }
 }
 
@@ -457,6 +483,7 @@ function drawDebug(ex) {
     `vel ${(ex.export_vel_x ? ex.export_vel_x() : 0).toFixed(1)},${(ex.export_vel_y ? ex.export_vel_y() : 0).toFixed(1)}`,
     `cam ${(ex.export_cam_x()|0)},${(ex.export_cam_y()|0)}`,
     `gnd ${ex.export_on_ground ? ex.export_on_ground() : '?'}`,
+    `orb ${(ex.export_orb_x?ex.export_orb_x():0)|0},${(ex.export_orb_y?ex.export_orb_y():0)|0}`,
     `html ${fileSizes.html}  js ${fileSizes.js}`,
     `wasm ${fileSizes.wasm}  odin ${fileSizes.odin}`,
     `sum ${fileSizes.total}  (limit 13312)`,
@@ -486,14 +513,13 @@ async function measureSizes() {
       const r = await fetch(f.u, { method: 'HEAD', cache: 'no-store' });
       const len = +(r.headers.get('content-length') || 0);
       fileSizes[f.k] = len;
-      if (f.k !== 'odin') total += len; // odin.js is huge; submission zip may omit/trim it
+      if (f.k !== 'odin') total += len;
     } catch (_) {
       fileSizes[f.k] = 0;
     }
   }
-  // Prefer actual measured game files; odin listed separately
   fileSizes.total = total;
-  fileSizes.zipEst = total; // approximate without compression
+  fileSizes.zipEst = total;
 }
 
 let last = performance.now();
@@ -526,7 +552,6 @@ function frame(now) {
       lastDig = now;
       let dfx = inp.digx, dfy = inp.digy;
       if (Math.abs(dfx) + Math.abs(dfy) < 0.12) {
-        // fallback to dig_facing or player facing
         dfx = ex.export_dig_facing_x ? ex.export_dig_facing_x() : (ex.export_facing_x ? ex.export_facing_x() : 1);
         dfy = ex.export_dig_facing_y ? ex.export_dig_facing_y() : (ex.export_facing_y ? ex.export_facing_y() : 0);
       }

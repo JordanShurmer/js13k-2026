@@ -12,6 +12,8 @@ on_ground: bool
 coyote: f32
 jump_buf: f32
 
+orb_pos: Vec2
+
 cam: Vec2
 
 inp_x: f32
@@ -27,12 +29,12 @@ time: f32
 // Dynamic view size (set from JS so mobile can show more world at 1:1)
 cw, ch: f32 = 320, 180
 
-// Slowed for deliberate dig/explore feel
+// Even slower + half jump for deliberate dig/explore feel
 GRAVITY: f32 : 650
-JUMP_SPEED: f32 : -220
-MAX_SPEED: f32 : 55
-ACCEL: f32 : 420
-FRICTION: f32 : 380
+JUMP_SPEED: f32 : -110
+MAX_SPEED: f32 : 32
+ACCEL: f32 : 260
+FRICTION: f32 : 300
 COYOTE_TIME: f32 : 0.08
 JUMP_BUFFER: f32 : 0.1
 HALF_GRAV_MULT: f32 : 0.5
@@ -45,9 +47,14 @@ DIG_REACH: f32 : 16
 init :: proc "c" () {
     context = runtime.default_context()
     gen_world()
-    player_pos = {12 * TILE_SIZE, 27 * TILE_SIZE}
+    // start inside wood room, on the floor near table
+    player_pos = {8 * TILE_SIZE, 30 * TILE_SIZE}
     player_vel = {}
+    // orb waits at tunnel entrance (doorway)
+    orb_pos = {18 * TILE_SIZE + 2, 26 * TILE_SIZE + 2}
     cam = player_pos - Vec2{cw * 0.5, ch * 0.5}
+    // clear initial orb area
+    mark_explored(orb_pos.x, orb_pos.y, 48)
 }
 
 @(export)
@@ -81,7 +88,18 @@ set_dt :: proc "c" (d: f32) {
 update :: proc "c" () {
     context = runtime.default_context()
     update_player()
+    update_orb()
     update_camera()
+}
+
+update_orb :: proc() {
+    // gentle follow toward player center, slightly above
+    target := player_pos + Vec2{PLAYER_W * 0.5, PLAYER_H * 0.25}
+    // lag so it trails a little
+    speed: f32 = 55
+    orb_pos = approach_v(orb_pos, target, speed * dt)
+    // permanent fog clear wherever orb travels
+    mark_explored(orb_pos.x, orb_pos.y, 56)
 }
 
 update_player :: proc() {
@@ -94,7 +112,7 @@ update_player :: proc() {
         }
     }
 
-    // Dig direction independent: stick on dig button (or keyboard fallback via dig_inp)
+    // Dig direction independent: digStick or keyboard fallback via dig_inp
     if abs(dig_inp_x) > 0.15 || abs(dig_inp_y) > 0.15 {
         dig_facing = {dig_inp_x, dig_inp_y}
     }
@@ -227,6 +245,10 @@ export_view_h :: proc "c" () -> f32 { context = runtime.default_context(); retur
 export_vel_x :: proc "c" () -> f32 { context = runtime.default_context(); return player_vel.x }
 @(export)
 export_vel_y :: proc "c" () -> f32 { context = runtime.default_context(); return player_vel.y }
+@(export)
+export_orb_x :: proc "c" () -> f32 { context = runtime.default_context(); return orb_pos.x }
+@(export)
+export_orb_y :: proc "c" () -> f32 { context = runtime.default_context(); return orb_pos.y }
 
 @(export)
 draw :: proc "c" () { context = runtime.default_context() }
