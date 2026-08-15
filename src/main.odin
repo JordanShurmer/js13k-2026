@@ -21,17 +21,18 @@ inp_action: bool
 dt: f32
 time: f32
 
+// Dynamic view size (set from JS so mobile can show more world at 1:1)
 cw, ch: f32 = 320, 180
 
-// Slowed down for better feel / control (was much snappier)
+// Slowed for deliberate dig/explore feel
 GRAVITY: f32 : 650
 JUMP_SPEED: f32 : -220
 MAX_SPEED: f32 : 55
 ACCEL: f32 : 420
 FRICTION: f32 : 380
-COYOTE_TIME: f32 : 0.1
-JUMP_BUFFER: f32 : 0.12
-HALF_GRAV_MULT: f32 : 0.55
+COYOTE_TIME: f32 : 0.08
+JUMP_BUFFER: f32 : 0.1
+HALF_GRAV_MULT: f32 : 0.5
 
 PLAYER_W: f32 : 6
 PLAYER_H: f32 : 10
@@ -197,11 +198,15 @@ export_facing_x :: proc "c" () -> f32 { context = runtime.default_context(); ret
 @(export)
 export_facing_y :: proc "c" () -> f32 { context = runtime.default_context(); return player_facing.y }
 @(export)
+export_on_ground :: proc "c" () -> i32 { context = runtime.default_context(); return on_ground ? 1 : 0 }
+@(export)
 export_view_w :: proc "c" () -> f32 { context = runtime.default_context(); return cw }
 @(export)
 export_view_h :: proc "c" () -> f32 { context = runtime.default_context(); return ch }
 @(export)
-export_on_ground :: proc "c" () -> i32 { context = runtime.default_context(); return on_ground ? 1 : 0 }
+export_vel_x :: proc "c" () -> f32 { context = runtime.default_context(); return player_vel.x }
+@(export)
+export_vel_y :: proc "c" () -> f32 { context = runtime.default_context(); return player_vel.y }
 
 @(export)
 draw :: proc "c" () { context = runtime.default_context() }

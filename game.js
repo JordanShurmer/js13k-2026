@@ -1,4 +1,4 @@
-// Grug glue — full-screen view (more world), debug HUD, slowed player
+// Grug glue — full-screen 1:1 view, debug HUD, slowed feel
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -11,7 +11,7 @@ let stick = null;
 let jumpIds = new Set();
 let actIds = new Set();
 
-// Gameboy-style face buttons — bottom left, stacked (recomputed on resize)
+// Gameboy-style face buttons — bottom left, stacked (positions refreshed on resize)
 const BTN = 36;
 const GAP = 6;
 const M = 6;
@@ -21,12 +21,11 @@ let BTN_ACT  = { x: M, y: H - M - BTN,           w: BTN, h: BTN };
 const parts = [];
 const MAX_PARTS = 40;
 
-// Debug / size tracking
-let fileSizes = { html: 0, js: 0, wasm: 0, odin: 0, total: 0 };
+// Debug
+let showDebug = false;
 let fps = 0;
-let frameCount = 0;
-let fpsLast = performance.now();
-let debugOn = true;
+let fpsAcc = 0, fpsFrames = 0, fpsLast = performance.now();
+let fileSizes = { html: 0, js: 0, wasm: 0, odin: 0, total: 0, zipEst: 0 };
 
 function layoutButtons() {
   BTN_JUMP = { x: M, y: H - M - BTN * 2 - GAP, w: BTN, h: BTN };
@@ -34,21 +33,16 @@ function layoutButtons() {
 }
 
 function resize() {
-  // Full viewport — show more of the world at 1:1 pixel scale (no upscaling of game)
-  // Use CSS pixels for world units so more world is visible on larger screens
-  W = Math.max(160, Math.floor(window.innerWidth));
-  H = Math.max(120, Math.floor(window.innerHeight));
+  // 1:1 CSS pixels — no upscale, just more world on larger screens
+  const w = Math.max(160, Math.floor(window.innerWidth || document.documentElement.clientWidth));
+  const h = Math.max(90, Math.floor(window.innerHeight || document.documentElement.clientHeight));
+  if (w === W && h === H) return;
+  W = w; H = h;
   canvas.width = W;
   canvas.height = H;
-  // CSS fills the screen exactly
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
   layoutButtons();
-  if (wasm && wasm.exports.set_view) {
-    wasm.exports.set_view(W, H);
-  }
+  if (wasm && wasm.exports.set_view) wasm.exports.set_view(W, H);
 }
-
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
@@ -103,7 +97,7 @@ canvas.addEventListener('touchcancel', e => { for (const t of e.changedTouches) 
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'KeyF') debugOn = !debugOn;
+  if (e.code === 'KeyF') showDebug = !showDebug;
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -230,7 +224,6 @@ function drawWorld(ex, t) {
     ctx.fillRect(0, H - 20, W, 20);
   }
 
-  // ORB
   const rad = 3.5 + pulse * 4.5;
   ctx.beginPath();
   ctx.arc(orbSX, orbSY, rad * 4.5, 0, Math.PI * 2);
@@ -253,7 +246,6 @@ function drawWorld(ex, t) {
   ctx.fillStyle = '#fff';
   ctx.fill();
 
-  // vignette
   const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.25, W * 0.5, H * 0.5, H * 0.85);
   vg.addColorStop(0, 'rgba(0,0,0,0)');
   vg.addColorStop(1, 'rgba(0,0,5,0.55)');
@@ -377,30 +369,51 @@ function drawParts() {
 }
 
 function drawDebug(ex) {
-  if (!debugOn) return;
+  if (!showDebug) return;
   const lines = [
-    `fps ${fps|0}`,
+    `FPS ${fps|0}`,
     `view ${W}x${H}`,
-    `files ${fileSizes.total}b (html+js+wasm+odin)`,
-    `  js ${fileSizes.js}  wasm ${fileSizes.wasm}`,
-    `  odin.js ${fileSizes.odin}  html ${fileSizes.html}`,
-    `zip limit 13312`,
-    `pos ${ex.export_player_x()|0},${ex.export_player_y()|0}`,
-    `cam ${ex.export_cam_x()|0},${ex.export_cam_y()|0}`,
+    `pos ${(ex.export_player_x()|0)},${(ex.export_player_y()|0)}`,
+    `vel ${(ex.export_vel_x ? ex.export_vel_x() : 0).toFixed(1)},${(ex.export_vel_y ? ex.export_vel_y() : 0).toFixed(1)}`,
+    `cam ${(ex.export_cam_x()|0)},${(ex.export_cam_y()|0)}`,
     `gnd ${ex.export_on_ground ? ex.export_on_ground() : '?'}`,
-    `F toggle`,
+    `html ${fileSizes.html}  js ${fileSizes.js}`,
+    `wasm ${fileSizes.wasm}  odin ${fileSizes.odin}`,
+    `sum ${fileSizes.total}  (limit 13312)`,
   ];
   ctx.font = '10px monospace';
   ctx.textBaseline = 'top';
-  // shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], 5, 4 + i * 12);
+  let y = 4;
+  for (const s of lines) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(4, y - 1, ctx.measureText(s).width + 6, 12);
+    ctx.fillStyle = '#c8f0a0';
+    ctx.fillText(s, 6, y);
+    y += 12;
   }
-  ctx.fillStyle = '#8f8';
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], 4, 3 + i * 12);
+}
+
+async function measureSizes() {
+  const files = [
+    { k: 'html', u: 'index.html' },
+    { k: 'js', u: 'game.js' },
+    { k: 'wasm', u: 'game.wasm' },
+    { k: 'odin', u: 'odin.js' },
+  ];
+  let total = 0;
+  for (const f of files) {
+    try {
+      const r = await fetch(f.u, { method: 'HEAD', cache: 'no-store' });
+      const len = +(r.headers.get('content-length') || 0);
+      fileSizes[f.k] = len;
+      if (f.k !== 'odin') total += len; // odin.js is huge; submission zip may omit/trim it
+    } catch (_) {
+      fileSizes[f.k] = 0;
+    }
   }
+  // Prefer actual measured game files; odin listed separately
+  fileSizes.total = total;
+  fileSizes.zipEst = total; // approximate without compression
 }
 
 let last = performance.now();
@@ -409,10 +422,11 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  frameCount++;
+  fpsAcc += dt;
+  fpsFrames++;
   if (now - fpsLast >= 500) {
-    fps = frameCount * 1000 / (now - fpsLast);
-    frameCount = 0;
+    fps = fpsFrames / (now - fpsLast) * 1000;
+    fpsFrames = 0;
     fpsLast = now;
   }
 
@@ -449,41 +463,12 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-async function measureSize(url) {
-  try {
-    const r = await fetch(url, { method: 'HEAD' });
-    const cl = r.headers.get('content-length');
-    if (cl) return parseInt(cl, 10) || 0;
-    // fallback full fetch
-    const buf = await (await fetch(url)).arrayBuffer();
-    return buf.byteLength;
-  } catch (_) { return 0; }
-}
-
 async function boot() {
+  resize();
+  measureSizes();
   try {
-    resize(); // set initial full-screen size
-
-    // measure the four submission-ish files (uncompressed)
-    const [szHtml, szJs, szWasm, szOdin] = await Promise.all([
-      measureSize('index.html'),
-      measureSize('game.js'),
-      measureSize('game.wasm'),
-      measureSize('odin.js'),
-    ]);
-    fileSizes = {
-      html: szHtml,
-      js: szJs,
-      wasm: szWasm,
-      odin: szOdin,
-      total: szHtml + szJs + szWasm + szOdin,
-    };
-
     const resp = await fetch('game.wasm');
     const bytes = await resp.arrayBuffer();
-    if (!fileSizes.wasm) fileSizes.wasm = bytes.byteLength;
-    fileSizes.total = fileSizes.html + fileSizes.js + fileSizes.wasm + fileSizes.odin;
-
     const { instance } = await WebAssembly.instantiate(bytes, {
       env: {},
       odin_env: { write: () => {} },
