@@ -1,4 +1,4 @@
-// Grug glue — full-screen 1:1, orb follow + fog, round diagonal GB buttons, dig dual-stick plasma
+// Grug glue — full-screen 1:1, orb follow + fog, round diagonal GB buttons (much bigger), dig dual-stick plasma, Noita tunnels
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -11,10 +11,10 @@ let stick = null;      // movement stick (free touch)
 let digStick = null;   // dig dual-purpose stick (from dig button)
 let jumpIds = new Set();
 
-// Round buttons — diagonal out of bottom-left corner (Gameboy face, mirrored)
-const BR = 18;
-const M = 10;
-const DOFF = 30;
+// Round buttons — MUCH bigger, diagonal out of bottom-left corner
+const BR = 32;
+const M = 14;
+const DOFF = 48;
 let jumpBtn = { cx: 0, cy: 0, r: BR };
 let digBtn  = { cx: 0, cy: 0, r: BR };
 
@@ -48,7 +48,7 @@ window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 100));
 
 function inCircle(tx, ty, b) {
-  return Math.hypot(tx - b.cx, ty - b.cy) <= b.r + 6;
+  return Math.hypot(tx - b.cx, ty - b.cy) <= b.r + 8;
 }
 
 function inRect(tx, ty, r) {
@@ -135,7 +135,7 @@ function stickVec(s, maxR) {
 function getInput() {
   let x = 0, y = 0;
   if (stick) {
-    const v = stickVec(stick, 34);
+    const v = stickVec(stick, 40);
     x = v.x; y = v.y;
   } else {
     if (keys['ArrowLeft'] || keys['KeyA']) x -= 1;
@@ -146,7 +146,7 @@ function getInput() {
 
   let digx = 0, digy = 0;
   if (digStick) {
-    const v = stickVec(digStick, 28);
+    const v = stickVec(digStick, 40);
     digx = v.x; digy = v.y;
   } else if (keys['KeyX']) {
     digx = x; digy = y; // keyboard inherits move dir
@@ -203,6 +203,9 @@ function drawWorld(ex, t) {
       const tile = ex.export_get_tile(tx, ty);
       const isSolid = tile !== 0;
       const isWood = tile === 2;
+      const isHard = tile === 3;
+      const isCrystal = tile === 4;
+      const isDirt = tile === 1;
       const isExpl = ex.export_get_explored ? (ex.export_get_explored(tx, ty) !== 0) : false;
       const wx = tx * ts + 2;
       const wy = ty * ts + 2;
@@ -224,8 +227,19 @@ function drawWorld(ex, t) {
         const u = 1 - dCan / CANDLE_R;
         L += u * u * (0.45 + 0.15 * Math.sin(t * 6));
       }
+      // crystal self + neighbour glow (pockets of light)
+      if (isCrystal) {
+        L = Math.max(L, 0.95 + 0.15 * Math.sin(t * 3.1 + tx));
+      } else {
+        let nc = 0;
+        if (ex.export_get_tile(tx - 1, ty) === 4) nc++;
+        if (ex.export_get_tile(tx + 1, ty) === 4) nc++;
+        if (ex.export_get_tile(tx, ty - 1) === 4) nc++;
+        if (ex.export_get_tile(tx, ty + 1) === 4) nc++;
+        if (nc) L = Math.max(L, 0.35 + nc * 0.22);
+      }
       if (isExpl) L = Math.max(L, 0.18);
-      L = Math.min(1.4, L);
+      L = Math.min(1.5, L);
 
       if (L < 0.035 && !isExpl) continue;
 
@@ -238,12 +252,17 @@ function drawWorld(ex, t) {
         let r, g, b;
         if (isWood) {
           r = 48 + v * 4; g = 28 + v * 2; b = 12 + (v & 2);
-        } else {
-          r = 28 + v * 3; g = 20 + v * 2; b = 14 + (v & 3);
+        } else if (isCrystal) {
+          r = 60 + v * 8; g = 200 + v * 4; b = 230 + (v & 3);
+        } else if (isHard) {
+          r = 16 + v * 2; g = 14 + v; b = 26 + (v & 3);
+        } else { // Dirt
+          r = 40 + v * 3; g = 26 + v * 2; b = 14 + (v & 2);
         }
-        r = Math.min(255, r + L * (isWood ? 140 : 160));
-        g = Math.min(255, g + L * (isWood ? 90 : 100));
-        b = Math.min(255, b + L * (isWood ? 40 : 180));
+        const boost = isCrystal ? 200 : (isHard ? 90 : (isWood ? 140 : 150));
+        r = Math.min(255, r + L * boost);
+        g = Math.min(255, g + L * (isCrystal ? 180 : isHard ? 70 : isWood ? 90 : 95));
+        b = Math.min(255, b + L * (isCrystal ? 220 : isHard ? 140 : isWood ? 40 : 70));
         if (dOrb < 32) {
           const b2 = (1 - dOrb / 32) * pulse * 0.55;
           r = Math.min(255, r + b2 * 90);
@@ -367,8 +386,8 @@ function drawRoundBtn(b, pressed, glyph) {
 
   if (!pressed) {
     ctx.beginPath();
-    ctx.arc(cx + 1.5, cy + 2.5, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.arc(cx + 2, cy + 3, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fill();
   }
 
@@ -378,77 +397,79 @@ function drawRoundBtn(b, pressed, glyph) {
   ctx.fill();
 
   ctx.beginPath();
-  ctx.arc(cx + o, cy + o - 1, r - 1, Math.PI * 1.1, Math.PI * 1.9);
-  ctx.strokeStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 2;
+  ctx.arc(cx + o, cy + o - 1, r - 2, Math.PI * 1.1, Math.PI * 1.9);
+  ctx.strokeStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.28)';
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(cx + o, cy + o, r - 4, 0, Math.PI * 2);
+  ctx.arc(cx + o, cy + o, r - 6, 0, Math.PI * 2);
   ctx.fillStyle = pressed ? '#2e2a3a' : '#3e3a50';
   ctx.fill();
 
   ctx.fillStyle = pressed ? '#9a90b8' : '#d0c8e8';
-  glyph(cx + o, cy + o);
+  glyph(cx + o, cy + o, r);
 }
 
 function drawUI(inp) {
-  drawRoundBtn(jumpBtn, inp.jump, (cx, cy) => {
+  drawRoundBtn(jumpBtn, inp.jump, (cx, cy, r) => {
+    const s = r * 0.32;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 6);
-    ctx.lineTo(cx + 5, cy + 1);
-    ctx.lineTo(cx + 1.5, cy + 1);
-    ctx.lineTo(cx + 1.5, cy + 6);
-    ctx.lineTo(cx - 1.5, cy + 6);
-    ctx.lineTo(cx - 1.5, cy + 1);
-    ctx.lineTo(cx - 5, cy + 1);
+    ctx.moveTo(cx, cy - s * 1.4);
+    ctx.lineTo(cx + s, cy + s * 0.2);
+    ctx.lineTo(cx + s * 0.35, cy + s * 0.2);
+    ctx.lineTo(cx + s * 0.35, cy + s * 1.2);
+    ctx.lineTo(cx - s * 0.35, cy + s * 1.2);
+    ctx.lineTo(cx - s * 0.35, cy + s * 0.2);
+    ctx.lineTo(cx - s, cy + s * 0.2);
     ctx.closePath();
     ctx.fill();
   });
 
   const digPressed = inp.action;
-  drawRoundBtn(digBtn, digPressed, (cx, cy) => {
-    ctx.fillRect(cx - 1, cy - 1, 2, 7);
+  drawRoundBtn(digBtn, digPressed, (cx, cy, r) => {
+    const s = r * 0.28;
+    ctx.fillRect(cx - s * 0.25, cy - s * 0.2, s * 0.5, s * 1.6);
     ctx.beginPath();
-    ctx.moveTo(cx - 5, cy - 2);
-    ctx.lineTo(cx, cy - 7);
-    ctx.lineTo(cx + 5, cy - 2);
-    ctx.lineTo(cx + 2, cy + 1);
-    ctx.lineTo(cx - 2, cy + 1);
+    ctx.moveTo(cx - s * 1.1, cy - s * 0.5);
+    ctx.lineTo(cx, cy - s * 1.5);
+    ctx.lineTo(cx + s * 1.1, cy - s * 0.5);
+    ctx.lineTo(cx + s * 0.5, cy + s * 0.2);
+    ctx.lineTo(cx - s * 0.5, cy + s * 0.2);
     ctx.closePath();
     ctx.fill();
   });
 
   if (digStick) {
     ctx.beginPath();
-    ctx.arc(digBtn.cx, digBtn.cy, 26, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(180,140,255,0.25)';
-    ctx.lineWidth = 2;
+    ctx.arc(digBtn.cx, digBtn.cy, BR + 10, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180,140,255,0.28)';
+    ctx.lineWidth = 3;
     ctx.stroke();
-    const v = stickVec(digStick, 28);
-    const kx = digBtn.cx + v.x * 22;
-    const ky = digBtn.cy + v.y * 22;
+    const v = stickVec(digStick, 40);
+    const kx = digBtn.cx + v.x * 30;
+    const ky = digBtn.cy + v.y * 30;
     ctx.beginPath();
-    ctx.arc(kx, ky, 9, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(200,160,255,0.45)';
+    ctx.arc(kx, ky, 13, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200,160,255,0.5)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
     ctx.stroke();
   }
 
   if (stick) {
     ctx.beginPath();
-    ctx.arc(stick.cx, stick.cy, 30, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(180,170,210,0.18)';
-    ctx.lineWidth = 2;
+    ctx.arc(stick.cx, stick.cy, 36, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180,170,210,0.2)';
+    ctx.lineWidth = 3;
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(stick.x, stick.y, 11, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(200,190,230,0.35)';
+    ctx.arc(stick.x, stick.y, 14, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200,190,230,0.4)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 2;
     ctx.stroke();
   }
 }
