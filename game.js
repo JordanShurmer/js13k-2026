@@ -1,4 +1,4 @@
-// Grug glue — mobile first, letterboxed, bottom-left floating buttons
+// Grug glue — Gameboy-feel buttons, fog of war, strong light
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
@@ -11,11 +11,12 @@ let stick = null;
 let jumpIds = new Set();
 let actIds = new Set();
 
-const BTN = 44;
-const M = 8;
-// true bottom-left of the game canvas
-const BTN_JUMP = { x: M, y: H - M - BTN * 2 - 10, w: BTN, h: BTN };
-const BTN_ACT  = { x: M, y: H - M - BTN,          w: BTN, h: BTN };
+// Gameboy-style face buttons — bottom left, stacked
+const BTN = 36;
+const GAP = 6;
+const M = 6;
+const BTN_JUMP = { x: M, y: H - M - BTN * 2 - GAP, w: BTN, h: BTN };
+const BTN_ACT  = { x: M, y: H - M - BTN,           w: BTN, h: BTN };
 
 const parts = [];
 const MAX_PARTS = 40;
@@ -78,7 +79,7 @@ function getInput() {
     const dx = stick.x - stick.cx;
     const dy = stick.y - stick.cy;
     const len = Math.hypot(dx, dy) || 1;
-    const maxR = 36;
+    const maxR = 34;
     const cl = Math.min(len, maxR);
     x = (dx / len) * (cl / maxR);
     y = (dy / len) * (cl / maxR);
@@ -96,11 +97,8 @@ function getInput() {
 }
 
 function clear() {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#06040c');
-  g.addColorStop(0.55, '#0a0812');
-  g.addColorStop(1, '#0c0a14');
-  ctx.fillStyle = g;
+  // near-black void — fog fills the rest
+  ctx.fillStyle = '#02010a';
   ctx.fillRect(0, 0, W, H);
 }
 
@@ -108,74 +106,141 @@ function drawWorld(ex, t) {
   const tw = ex.export_world_w();
   const th = ex.export_world_h();
   const ts = ex.export_tile_size();
-  let camX = ex.export_cam_x();
-  let camY = ex.export_cam_y();
+  const camX = ex.export_cam_x();
+  const camY = ex.export_cam_y();
+  const px = ex.export_player_x();
+  const py = ex.export_player_y();
 
   const tx0 = Math.max(0, Math.floor(camX / ts) - 1);
   const ty0 = Math.max(0, Math.floor(camY / ts) - 1);
   const tx1 = Math.min(tw - 1, Math.ceil((camX + W) / ts) + 1);
   const ty1 = Math.min(th - 1, Math.ceil((camY + H) / ts) + 1);
 
+  // orb world pos
   const orbWX = 15 * ts + 2;
   const orbWY = 22 * ts + 2;
   const orbSX = orbWX - camX;
   const orbSY = orbWY - camY;
-  const pulse = 0.5 + 0.5 * Math.sin(t * 2.2);
+  const pulse = 0.55 + 0.45 * Math.sin(t * 2.4);
+
+  // player as weak secondary light
+  const pLX = px + 3;
+  const pLY = py + 5;
+
+  // --- FOG + LIGHT pass over solids ---
+  // light radii (world px)
+  const ORB_R = 72 + pulse * 18;
+  const PLY_R = 38;
 
   let solids = 0;
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
-      if (ex.export_get_tile(tx, ty) === 0) continue;
-      solids++;
+      const isSolid = ex.export_get_tile(tx, ty) !== 0;
+      const wx = tx * ts + 2;
+      const wy = ty * ts + 2;
+
+      // distance to lights
+      const dOrb = Math.hypot(wx - orbWX, wy - orbWY);
+      const dPly = Math.hypot(wx - pLX, wy - pLY);
+
+      // orb light: sharp falloff, strong core
+      let L = 0;
+      if (dOrb < ORB_R) {
+        const u = 1 - dOrb / ORB_R;
+        L += (u * u) * (0.55 + pulse * 0.45); // quadratic falloff
+      }
+      // player torch — softer, weaker
+      if (dPly < PLY_R) {
+        const u = 1 - dPly / PLY_R;
+        L += u * u * 0.35;
+      }
+      L = Math.min(1.35, L);
+
+      // fog of war: below threshold → nearly invisible
+      if (L < 0.04) continue;
+
       const sx = Math.floor(tx * ts - camX);
       const sy = Math.floor(ty * ts - camY);
 
-      const v = ((tx * 17 + ty * 31) & 7);
-      let r = 42 + v * 4;
-      let g = 30 + v * 2;
-      let b = 20 + (v & 3);
+      if (isSolid) {
+        solids++;
+        // base ruin colour
+        const v = ((tx * 17 + ty * 31) & 7);
+        let r = 28 + v * 3;
+        let g = 20 + v * 2;
+        let b = 14 + (v & 3);
 
-      const dx = (tx * ts + 2) - orbWX;
-      const dy = (ty * ts + 2) - orbWY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const light = Math.max(0, 1 - dist / 100) * pulse * 0.7;
-      r = Math.min(255, r + light * 110);
-      g = Math.min(255, g + light * 80);
-      b = Math.min(255, b + light * 140);
+        // drastic light tint (violet-warm from orb)
+        r = Math.min(255, r + L * 160);
+        g = Math.min(255, g + L * 100);
+        b = Math.min(255, b + L * 180);
 
-      ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
-      ctx.fillRect(sx, sy, ts, ts);
+        // near-orb bloom push toward white-violet
+        if (dOrb < 28) {
+          const b2 = (1 - dOrb / 28) * pulse * 0.5;
+          r = Math.min(255, r + b2 * 80);
+          g = Math.min(255, g + b2 * 60);
+          b = Math.min(255, b + b2 * 100);
+        }
 
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      if (ex.export_get_tile(tx - 1, ty) === 0) ctx.fillRect(sx, sy, 1, ts);
-      if (ex.export_get_tile(tx + 1, ty) === 0) ctx.fillRect(sx + ts - 1, sy, 1, ts);
-      if (ex.export_get_tile(tx, ty - 1) === 0) ctx.fillRect(sx, sy, ts, 1);
-      if (ex.export_get_tile(tx, ty + 1) === 0) ctx.fillRect(sx, sy + ts - 1, ts, 1);
+        ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+        ctx.fillRect(sx, sy, ts, ts);
+
+        // edge shade only when reasonably lit
+        if (L > 0.15) {
+          ctx.fillStyle = `rgba(0,0,0,${0.45 * Math.min(1, L)})`;
+          if (ex.export_get_tile(tx - 1, ty) === 0) ctx.fillRect(sx, sy, 1, ts);
+          if (ex.export_get_tile(tx + 1, ty) === 0) ctx.fillRect(sx + ts - 1, sy, 1, ts);
+          if (ex.export_get_tile(tx, ty - 1) === 0) ctx.fillRect(sx, sy, ts, 1);
+          if (ex.export_get_tile(tx, ty + 1) === 0) ctx.fillRect(sx, sy + ts - 1, ts, 1);
+        }
+      } else {
+        // air: very subtle ambient dust in strong light only
+        if (L > 0.25) {
+          const a = (L - 0.25) * 0.12;
+          ctx.fillStyle = `rgba(120,90,180,${a})`;
+          ctx.fillRect(sx, sy, ts, ts);
+        }
+      }
     }
   }
 
   if (solids === 0) {
-    ctx.fillStyle = '#3a2a1a';
-    ctx.fillRect(0, H - 24, W, 24);
+    ctx.fillStyle = '#2a1a12';
+    ctx.fillRect(0, H - 20, W, 20);
   }
 
-  const rad = 4 + pulse * 4;
+  // --- ORB (drawn after world so it sits on top) ---
+  const rad = 3.5 + pulse * 4.5;
+  // outer bloom
   ctx.beginPath();
-  ctx.arc(orbSX, orbSY, rad * 3.2, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(160,100,255,${0.06 + pulse * 0.08})`;
+  ctx.arc(orbSX, orbSY, rad * 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(140,80,255,${0.05 + pulse * 0.07})`;
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(orbSX, orbSY, rad * 1.9, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(190,140,255,${0.15 + pulse * 0.15})`;
+  ctx.arc(orbSX, orbSY, rad * 2.6, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(180,120,255,${0.12 + pulse * 0.14})`;
   ctx.fill();
+  ctx.beginPath();
+  ctx.arc(orbSX, orbSY, rad * 1.4, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(210,170,255,${0.35 + pulse * 0.25})`;
+  ctx.fill();
+  // core
   ctx.beginPath();
   ctx.arc(orbSX, orbSY, rad, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(230,200,255,${0.8 + pulse * 0.2})`;
+  ctx.fillStyle = `rgba(240,220,255,${0.9 + pulse * 0.1})`;
   ctx.fill();
   ctx.beginPath();
   ctx.arc(orbSX, orbSY, rad * 0.35, 0, Math.PI * 2);
   ctx.fillStyle = '#fff';
   ctx.fill();
+
+  // soft vignette for fog depth
+  const vg = ctx.createRadialGradient(W * 0.5, H * 0.5, H * 0.25, W * 0.5, H * 0.5, H * 0.85);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,5,0.55)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawPlayer(ex) {
@@ -184,6 +249,12 @@ function drawPlayer(ex) {
   const px = Math.floor(ex.export_player_x() - camX);
   const py = Math.floor(ex.export_player_y() - camY);
   const fx = ex.export_facing_x ? ex.export_facing_x() : 1;
+
+  // tiny personal glow
+  ctx.beginPath();
+  ctx.arc(px + 3, py + 5, 14, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(180,140,255,0.08)';
+  ctx.fill();
 
   ctx.fillStyle = '#c8a0ff';
   ctx.fillRect(px, py, 6, 10);
@@ -199,61 +270,84 @@ function drawPlayer(ex) {
   ctx.fillRect(exx + (fx >= 0 ? 1 : 0), py + 2, 1, 1);
 }
 
-function drawUI(inp) {
-  function btn(r, pressed, icon) {
-    ctx.fillStyle = pressed ? 'rgba(232,224,255,0.95)' : 'rgba(22,18,32,0.88)';
-    // rounded-ish via extra fill
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.strokeStyle = pressed ? '#fff' : 'rgba(170,150,210,0.6)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-    icon(r, pressed);
+// --- Gameboy-feel face buttons ---
+function drawGBButton(r, pressed, glyph) {
+  const x = r.x, y = r.y, w = r.w, h = r.h;
+  const o = pressed ? 1 : 0; // press offset
+
+  // drop shadow (only when up)
+  if (!pressed) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(x + 2, y + 3, w, h);
   }
 
-  // JUMP — up chevron
-  btn(BTN_JUMP, inp.jump, (r, p) => {
-    ctx.fillStyle = p ? '#2a2040' : '#c0b0e0';
-    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  // body — muted plastic
+  ctx.fillStyle = pressed ? '#3a3548' : '#4a4560';
+  ctx.fillRect(x + o, y + o, w, h);
+
+  // top-left highlight (bevel)
+  ctx.fillStyle = pressed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.22)';
+  ctx.fillRect(x + o, y + o, w, 2);
+  ctx.fillRect(x + o, y + o, 2, h);
+
+  // bottom-right shade
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(x + o, y + o + h - 2, w, 2);
+  ctx.fillRect(x + o + w - 2, y + o, 2, h);
+
+  // inner face
+  ctx.fillStyle = pressed ? '#2e2a3a' : '#3e3a50';
+  ctx.fillRect(x + o + 3, y + o + 3, w - 6, h - 6);
+
+  // glyph
+  ctx.fillStyle = pressed ? '#9a90b8' : '#d0c8e8';
+  glyph(x + o + w / 2, y + o + h / 2);
+}
+
+function drawUI(inp) {
+  // JUMP — A-style, up arrow glyph
+  drawGBButton(BTN_JUMP, inp.jump, (cx, cy) => {
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 11);
-    ctx.lineTo(cx + 9, cy + 1);
-    ctx.lineTo(cx + 3, cy + 1);
-    ctx.lineTo(cx + 3, cy + 11);
-    ctx.lineTo(cx - 3, cy + 11);
-    ctx.lineTo(cx - 3, cy + 1);
-    ctx.lineTo(cx - 9, cy + 1);
+    ctx.moveTo(cx, cy - 7);
+    ctx.lineTo(cx + 6, cy + 1);
+    ctx.lineTo(cx + 2, cy + 1);
+    ctx.lineTo(cx + 2, cy + 7);
+    ctx.lineTo(cx - 2, cy + 7);
+    ctx.lineTo(cx - 2, cy + 1);
+    ctx.lineTo(cx - 6, cy + 1);
     ctx.closePath();
     ctx.fill();
   });
 
-  // DIG — clear pickaxe (head on top, handle down)
-  btn(BTN_ACT, inp.action, (r, p) => {
-    ctx.fillStyle = p ? '#2a2040' : '#c0b0e0';
-    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  // DIG — B-style, simple pick glyph
+  drawGBButton(BTN_ACT, inp.action, (cx, cy) => {
+    // handle
+    ctx.fillRect(cx - 1, cy - 2, 2, 9);
     // head
     ctx.beginPath();
-    ctx.moveTo(cx - 10, cy - 2);
-    ctx.lineTo(cx - 2, cy - 10);
-    ctx.lineTo(cx + 2, cy - 10);
-    ctx.lineTo(cx + 10, cy - 2);
-    ctx.lineTo(cx + 6, cy + 2);
-    ctx.lineTo(cx - 6, cy + 2);
+    ctx.moveTo(cx - 7, cy - 1);
+    ctx.lineTo(cx, cy - 8);
+    ctx.lineTo(cx + 7, cy - 1);
+    ctx.lineTo(cx + 3, cy + 2);
+    ctx.lineTo(cx - 3, cy + 2);
     ctx.closePath();
     ctx.fill();
-    // handle
-    ctx.fillRect(cx - 1.5, cy + 1, 3, 12);
   });
 
+  // stick — understated ring
   if (stick) {
     ctx.beginPath();
-    ctx.arc(stick.cx, stick.cy, 34, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(200,180,255,0.22)';
+    ctx.arc(stick.cx, stick.cy, 30, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180,170,210,0.18)';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(stick.x, stick.y, 14, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(220,200,255,0.4)';
+    ctx.arc(stick.x, stick.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200,190,230,0.35)';
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 }
 
